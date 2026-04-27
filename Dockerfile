@@ -1,8 +1,10 @@
 FROM php:8.3-cli
 
 RUN apt-get update && apt-get install -y \
-    git unzip zip curl libzip-dev libpng-dev libonig-dev libxml2-dev nodejs npm \
-    && docker-php-ext-install pdo pdo_mysql mbstring zip exif pcntl
+    git unzip zip curl \
+    libzip-dev libpng-dev libonig-dev libxml2-dev \
+    libsqlite3-dev nodejs npm \
+    && docker-php-ext-install pdo pdo_mysql pdo_sqlite mbstring zip exif pcntl
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
@@ -10,8 +12,11 @@ WORKDIR /app
 
 COPY . .
 
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
+
 RUN npm install && npm run build
+
+RUN php artisan package:discover --ansi || true
 
 RUN chmod -R 775 storage bootstrap/cache
 

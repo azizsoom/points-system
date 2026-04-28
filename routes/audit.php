@@ -1,6 +1,5 @@
 <?php
 
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -29,6 +28,7 @@ function audit_action_label(Request $request, string $path): string
 
     if ($method === 'GET') {
         return match (true) {
+            Str::startsWith($path, 'audit-logs') => 'فتح سجل العمليات',
             Str::startsWith($path, 'dashboard') => 'فتح لوحة المدير',
             Str::startsWith($path, 'invoices') => 'فتح صفحة الفواتير والنقاط',
             Str::startsWith($path, 'agents') => 'فتح صفحة المناديب',
@@ -60,8 +60,7 @@ function audit_record(Request $request): void
 
         $path = trim($request->path(), '/');
         if ($path === '') $path = 'dashboard';
-        if (Str::startsWith($path, 'attachments')) return;
-        if (Str::startsWith($path, 'up')) return;
+        if (Str::startsWith($path, 'attachments') || Str::startsWith($path, 'up')) return;
 
         $userId = session('user_id');
         $agentId = session('agent_id');
@@ -73,10 +72,12 @@ function audit_record(Request $request): void
         $actorType = $user ? (($user->role ?? 'staff') === 'admin' ? 'مدير' : 'موظف') : ($agent ? 'مندوب' : 'زائر');
         $actorName = $user->name ?? $agent->name ?? 'غير معروف';
 
-        $details = [];
+        $details = null;
         if ($request->isMethod('POST')) {
-            $safe = collect($request->except(['password', '_token', 'attachment']))->map(fn($v) => is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_UNICODE))->toArray();
-            $details = $safe;
+            $safe = collect($request->except(['password', '_token', 'attachment']))
+                ->map(fn ($v) => is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_UNICODE))
+                ->toArray();
+            $details = $safe ? json_encode($safe, JSON_UNESCAPED_UNICODE) : null;
         }
 
         DB::table('audit_logs')->insert([
@@ -90,19 +91,17 @@ function audit_record(Request $request): void
             'path' => $path,
             'ip_address' => $request->ip(),
             'user_agent' => substr((string) $request->userAgent(), 0, 900),
-            'details' => $details ? json_encode($details, JSON_UNESCAPED_UNICODE) : null,
+            'details' => $details,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-    } catch (Throwable $e) {
+    } catch (\Throwable $e) {
         // لا نوقف النظام بسبب السجل
     }
 }
 
-Route::middleware(function (Request $request, Closure $next) {
-    $response = $next($request);
-    audit_record($request);
-    return $response;
+app()->terminating(function () {
+    audit_record(request());
 });
 
 Route::get('/audit-logs', function (Request $request) {

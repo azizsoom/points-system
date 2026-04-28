@@ -12,10 +12,10 @@ function riyadh_dt($value): string
 function admin_ui(string $title, string $body, ?object $user = null): string
 {
     $user = $user ?: current_user_record();
-    $version = e('1.4.1');
+    $version = e('1.4.5');
     $now = riyadh_dt(now());
     $token = csrf_token();
-    $links = '<a class="nav-link" href="/dashboard">الرئيسية</a><a class="nav-link" href="/invoices">الفواتير والنقاط</a><a class="nav-link" href="/agents">المناديب</a><a class="nav-link" href="/payouts">الصرف والتصفير</a><a class="nav-link" href="/branches">الفروع</a><a class="nav-link" href="/employees">الموظفون</a><a class="nav-link" href="/agent/login">بوابة المندوب</a>';
+    $links = '<a class="nav-link" href="/dashboard">الرئيسية</a><a class="nav-link" href="/invoices">الفواتير والنقاط</a><a class="nav-link" href="/agents">المناديب</a><a class="nav-link" href="/payouts">الصرف والتصفير</a><a class="nav-link" href="/branches">الفروع</a><a class="nav-link" href="/employees">الموظفون</a><a class="nav-link" href="/audit-logs">سجل العمليات</a><a class="nav-link" href="/agent/login">بوابة المندوب</a>';
     $logout = '<form method="POST" action="/logout"><input type="hidden" name="_token" value="'.$token.'"><button class="nav-link logout">تسجيل خروج</button></form>';
     $nav = $user ? '<div class="mobile-top"><details><summary><div><b>نظام مكافآت المناديب</b><small>اضغط لاختيار القسم</small></div><span>⌄</span></summary><nav>'.$links.$logout.'</nav></details></div><aside class="side"><h2>نظام مكافآت المناديب</h2><p>لوحة التحكم الداخلية</p><div class="ver">تحديث '.$version.'<br>توقيت الرياض '.$now.'</div><nav>'.$links.$logout.'</nav></aside>' : '';
     $flash = '';

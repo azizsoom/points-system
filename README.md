@@ -2,4 +2,4 @@
 
 نظام مكافآت المناديب.
 
-Last trigger: apply manager upgrades.
+Last trigger: bump visible version to 1.5.1.

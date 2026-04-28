@@ -19,9 +19,8 @@ RUN npm install && npm run build
 RUN php artisan package:discover --ansi || true
 
 RUN mkdir -p database && touch database/database.sqlite
-RUN php artisan migrate --force || true
 RUN chmod -R 775 storage bootstrap/cache database
 
 EXPOSE 10000
 
-CMD php artisan serve --host=0.0.0.0 --port=${PORT:-10000}
+CMD php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT:-10000}

@@ -1,0 +1,30 @@
+name: Bump visible version 151
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update visible version
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('routes/manager.php')
+          s = p.read_text()
+          s = s.replace("$version = e('1.4.5');", "$version = e('1.5.1');")
+          p.write_text(s)
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add routes/manager.php
+          if git diff --cached --quiet; then echo "No changes"; else git commit -m "bump visible version to 1.5.1" && git push; fi

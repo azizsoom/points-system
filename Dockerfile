@@ -3,8 +3,8 @@ FROM php:8.4-cli
 RUN apt-get update && apt-get install -y \
     git unzip zip curl \
     libzip-dev libpng-dev libonig-dev libxml2-dev \
-    libsqlite3-dev nodejs npm \
-    && docker-php-ext-install pdo pdo_mysql pdo_sqlite mbstring zip exif pcntl
+    libsqlite3-dev libpq-dev nodejs npm \
+    && docker-php-ext-install pdo pdo_mysql pdo_sqlite pdo_pgsql mbstring zip exif pcntl
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 

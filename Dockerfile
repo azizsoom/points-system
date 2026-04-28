@@ -18,7 +18,9 @@ RUN npm install && npm run build
 
 RUN php artisan package:discover --ansi || true
 
-RUN chmod -R 775 storage bootstrap/cache
+RUN mkdir -p database && touch database/database.sqlite
+RUN php artisan migrate --force || true
+RUN chmod -R 775 storage bootstrap/cache database
 
 EXPOSE 10000
 

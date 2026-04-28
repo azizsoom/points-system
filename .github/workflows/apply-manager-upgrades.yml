@@ -1,0 +1,183 @@
+name: Apply manager upgrades
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch responsive UI and management routes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('routes/web.php')
+          s = p.read_text()
+
+          # Strong responsive style for laptop/tablet/mobile
+          new_style = """<style>
+          *{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif}.input{width:100%;border:1px solid #cbd5e1;border-radius:14px;padding:12px;background:white;font-size:16px}.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:14px;padding:11px 18px;font-weight:700;gap:6px}.btn-primary{background:#0f172a;color:white}.btn-soft{background:#f1f5f9;color:#0f172a}.btn-danger{background:#fee2e2;color:#991b1b}.card{background:white;border:1px solid #e2e8f0;border-radius:22px;box-shadow:0 8px 20px rgba(15,23,42,.04)}th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:right;vertical-align:middle;white-space:nowrap}.table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.chart-bar{border-radius:12px 12px 0 0;min-height:10px}.stat-card{position:relative;overflow:hidden}.stat-card:before{content:'';position:absolute;inset:auto -20px -30px auto;width:110px;height:110px;border-radius:50%;background:rgba(255,255,255,.18)}details>summary::-webkit-details-marker{display:none}
+          @media(max-width:1024px){.desktop-sidebar{display:none!important}.mobile-top{display:block!important}.layout-main{display:block!important}main{padding:14px!important}.card{border-radius:18px}.grid{grid-template-columns:1fr!important}.lg\\:grid-cols-2,.lg\\:grid-cols-3,.lg\\:grid-cols-4,.md\\:grid-cols-2,.md\\:grid-cols-3,.md\\:grid-cols-4,.md\\:grid-cols-5,.md\\:grid-cols-6{grid-template-columns:1fr!important}h1{font-size:1.55rem!important}table{font-size:13px;min-width:760px}.btn{width:100%;margin-top:4px}.mobile-menu-grid{grid-template-columns:1fr 1fr!important}.mobile-stack{display:block!important}.mobile-stack>*{width:100%!important;margin-top:8px!important}}
+          @media(min-width:1025px){.mobile-top{display:none!important}.desktop-sidebar{display:block!important}.layout-main{display:flex!important}}
+          </style>"""
+          s = re.sub(r"<style>.*?</style>", new_style, s, count=1, flags=re.S)
+
+          # Normalize layout class names used by CSS
+          s = s.replace('class="min-h-screen lg:flex"', 'class="min-h-screen lg:flex layout-main"')
+          s = s.replace('class="lg:hidden sticky top-0 z-50', 'class="mobile-top lg:hidden sticky top-0 z-50')
+          s = s.replace('class="hidden lg:block w-72', 'class="desktop-sidebar hidden lg:block w-72')
+          s = s.replace('class="grid grid-cols-2 gap-2 p-4 pt-0 text-sm bg-slate-950"', 'class="grid grid-cols-2 gap-2 p-4 pt-0 text-sm bg-slate-950 mobile-menu-grid"')
+          s = s.replace('class="card overflow-x-auto"', 'class="card table-wrap"')
+          s = s.replace('class="overflow-x-auto"', 'class="table-wrap"')
+
+          # Add version and Riyadh time chip above page content if missing
+          if 'system-version-chip' not in s:
+              old = '<div class="max-w-7xl mx-auto">'.$flash.$body
+              new = '<div class="max-w-7xl mx-auto"><div class="system-version-chip mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600"><span>رقم التحديث: <b>'.e(env('APP_VERSION', '1.4.0')).'</b></span><span>توقيت الرياض: <b>'.now('Asia/Riyadh')->format('Y-m-d H:i').'</b></span></div>'.$flash.$body
+              s = s.replace(old, new)
+
+          # Append manager upgrades once. Later routes override earlier routes in Laravel collection.
+          if 'MANAGER_UPGRADES_V2' not in s:
+              s += r'''
+
+// MANAGER_UPGRADES_V2
+function dt_riyadh($value): string
+{
+    if (!$value) return '-';
+    return \Carbon\Carbon::parse($value)->timezone('Asia/Riyadh')->format('Y-m-d H:i');
+}
+
+function small_method_field(string $method): string
+{
+    return '<input type="hidden" name="_method" value="'.e($method).'">';
+}
+
+Route::get('/dashboard', function () {
+    $user = require_user_record();
+    $agents = DB::table('agents')->count();
+    $invoices = DB::table('invoices')->count();
+    $sales = (float) DB::table('invoices')->where('status', 'active')->sum('net_amount');
+    $rewards = (float) DB::table('invoices')->where('status', 'active')->sum('reward_amount');
+    $paid = (float) DB::table('payouts')->sum('amount');
+    $available = max(0, $rewards - $paid);
+
+    $stats = [
+        ['صافي المبيعات', money_fmt($sales), 'from-sky-600 to-blue-700'],
+        ['المكافآت المستحقة', money_fmt($available), 'from-emerald-600 to-teal-700'],
+        ['عدد الفواتير', $invoices, 'from-violet-600 to-fuchsia-700'],
+        ['عدد المناديب', $agents, 'from-amber-500 to-orange-700'],
+    ];
+
+    $html = '<div class="mobile-stack flex items-center justify-between mb-6"><div><h1 class="text-3xl font-black">لوحة المدير</h1><p class="text-slate-500 mt-1">ملخص الأداء، الفواتير، النقاط، والصرف</p></div><div class="rounded-2xl bg-slate-950 text-white px-4 py-3 text-sm">تحديث '.e(env('APP_VERSION','1.4.0')).'<br><span class="text-slate-300">'.dt_riyadh(now()).'</span></div></div>';
+    $html .= '<div class="grid lg:grid-cols-4 md:grid-cols-2 gap-4">';
+    foreach ($stats as $st) {
+        $html .= '<div class="stat-card rounded-3xl bg-gradient-to-br '.$st[2].' text-white p-5 shadow-sm"><div class="text-white/80 text-sm">'.$st[0].'</div><div class="text-2xl font-black mt-2">'.$st[1].'</div></div>';
+    }
+    $html .= '</div>';
+
+    $months = [];
+    for ($i = 5; $i >= 0; $i--) {
+        $d = now('Asia/Riyadh')->subMonths($i);
+        $key = $d->format('Y-m');
+        $months[$key] = ['label'=>$d->format('m/Y'), 'sales'=>0, 'rewards'=>0];
+    }
+    $rows = DB::table('invoices')->where('status','active')->selectRaw("strftime('%Y-%m', created_at) as ym, sum(net_amount) as sales, sum(reward_amount) as rewards")->groupBy('ym')->get();
+    foreach ($rows as $r) if (isset($months[$r->ym])) { $months[$r->ym]['sales']=(float)$r->sales; $months[$r->ym]['rewards']=(float)$r->rewards; }
+    $max = max(1, max(array_map(fn($m)=>$m['sales'], $months)));
+    $html .= '<div class="grid lg:grid-cols-2 gap-6 mt-6"><div class="card p-6"><h2 class="font-black text-xl mb-4">رسم بياني للمبيعات الشهرية</h2><div class="flex items-end gap-3 h-64 border-b border-slate-200 pb-2">';
+    foreach ($months as $m) {
+        $h = max(8, round(($m['sales']/$max)*220));
+        $html .= '<div class="flex-1 text-center"><div class="chart-bar bg-gradient-to-t from-blue-700 to-sky-400 mx-auto" style="height:'.$h.'px"></div><div class="text-[11px] mt-2 text-slate-500">'.$m['label'].'</div><div class="text-[11px] font-bold">'.number_format($m['sales'],0).'</div></div>';
+    }
+    $html .= '</div><div class="text-xs text-slate-500 mt-3">الأزرق = صافي المبيعات المحتسبة قبل الضريبة وبعد الخصم</div></div>';
+
+    $topAgents = DB::table('agents')->get();
+    $html .= '<div class="card p-6"><h2 class="font-black text-xl mb-4">أرصدة المناديب</h2><div class="space-y-3">';
+    foreach ($topAgents->take(6) as $a) {
+        $b = agent_balance($a->id);
+        $pct = $available > 0 ? min(100, round(($b['available'] / max(1,$available))*100)) : 0;
+        $html .= '<div><div class="flex justify-between text-sm mb-1"><span>'.e($a->name).'</span><b>'.money_fmt($b['available']).'</b></div><div class="h-3 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-emerald-600 to-teal-400" style="width:'.$pct.'%"></div></div></div>';
+    }
+    $html .= '</div></div></div>';
+
+    $latest = DB::table('invoices')->join('agents','agents.id','=','invoices.agent_id')->leftJoin('users','users.id','=','invoices.user_id')->select('invoices.*','agents.name as agent_name','agents.referral_code','users.name as user_name')->latest('invoices.id')->limit(10)->get();
+    $html .= '<div class="card table-wrap mt-6"><div class="p-5"><h2 class="font-black text-xl">آخر الفواتير وتتبع النقاط</h2></div><table class="w-full"><tr><th>التاريخ والوقت</th><th>الفاتورة</th><th>المندوب</th><th>الكود</th><th>الموظف</th><th>الصافي</th><th>النسبة</th><th>النقاط/المكافأة</th><th>الحالة</th></tr>';
+    foreach ($latest as $i) {
+        $html .= '<tr><td>'.dt_riyadh($i->created_at).'</td><td>'.e($i->invoice_number).'</td><td>'.e($i->agent_name).'</td><td>'.e($i->referral_code).'</td><td>'.e($i->user_name).'</td><td>'.money_fmt($i->net_amount).'</td><td>'.$i->reward_rate.'%</td><td class="font-bold text-emerald-700">'.money_fmt($i->reward_amount).'</td><td>'.($i->status==='active'?'فعالة':'ملغاة').'</td></tr>';
+    }
+    $html .= '</table></div>';
+    return app_layout('لوحة المدير', $html, $user);
+});
+
+Route::get('/employees', function () {
+    $user = require_admin_record();
+    $branches = DB::table('branches')->where('active', true)->get();
+    $users = DB::table('users')->leftJoin('branches','branches.id','=','users.branch_id')->select('users.*','branches.name as branch_name')->orderBy('users.id','desc')->get();
+    $opts = '<option value="">بدون فرع</option>'; foreach ($branches as $b) $opts .= '<option value="'.$b->id.'">'.e($b->name).'</option>';
+    $html = '<div class="mobile-stack flex items-center justify-between mb-6"><h1 class="text-3xl font-black">الموظفون</h1></div><div class="card p-5 mb-6"><form method="POST" action="/employees" class="grid md:grid-cols-5 gap-3"><input type="hidden" name="_token" value="'.csrf_token().'"><input class="input" name="name" placeholder="الاسم" required><input class="input" name="email" type="email" placeholder="البريد" required><input class="input" name="password" placeholder="كلمة المرور" required><select class="input" name="role"><option value="staff">موظف</option><option value="admin">مدير</option></select><select class="input" name="branch_id">'.$opts.'</select><button class="btn btn-primary md:col-span-5">إضافة موظف</button></form></div><div class="card table-wrap"><table class="w-full"><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>الفرع</th><th>الحالة</th><th>إجراءات</th></tr>';
+    foreach ($users as $u) {
+        $html .= '<tr><td>'.e($u->name).'</td><td>'.e($u->email).'</td><td>'.e($u->role).'</td><td>'.e($u->branch_name).'</td><td>'.(($u->active ?? true)?'نشط':'موقوف').'</td><td><a class="btn btn-soft" href="/employees/'.$u->id.'/edit">تحرير</a><form method="POST" action="/employees/'.$u->id.'/delete" class="inline"><input type="hidden" name="_token" value="'.csrf_token().'"><button class="btn btn-danger" onclick="return confirm(\'حذف الموظف؟\')">حذف</button></form></td></tr>';
+    }
+    return app_layout('الموظفون', $html.'</table></div>', $user);
+});
+
+Route::get('/employees/{id}/edit', function ($id) {
+    $user = require_admin_record();
+    $u = DB::table('users')->find($id); abort_unless($u,404);
+    $branches = DB::table('branches')->where('active', true)->get();
+    $opts = '<option value="">بدون فرع</option>'; foreach ($branches as $b) $opts .= '<option value="'.$b->id.'" '.(($u->branch_id==$b->id)?'selected':'').'>'.e($b->name).'</option>';
+    $html = '<div class="max-w-2xl card p-6"><h1 class="text-3xl font-black mb-6">تحرير الموظف</h1><form method="POST" action="/employees/'.$u->id.'/edit" class="space-y-4"><input type="hidden" name="_token" value="'.csrf_token().'"><input class="input" name="name" value="'.e($u->name).'" required><input class="input" name="email" type="email" value="'.e($u->email).'" required><input class="input" name="password" placeholder="كلمة مرور جديدة - اتركها فارغة بدون تغيير"><select class="input" name="role"><option value="staff" '.($u->role==='staff'?'selected':'').'>موظف</option><option value="admin" '.($u->role==='admin'?'selected':'').'>مدير</option></select><select class="input" name="branch_id">'.$opts.'</select><select class="input" name="active"><option value="1" '.(($u->active??true)?'selected':'').'>نشط</option><option value="0" '.(!($u->active??true)?'selected':'').'>موقوف</option></select><button class="btn btn-primary">حفظ التعديل</button></form></div>';
+    return app_layout('تحرير موظف',$html,$user);
+});
+
+Route::post('/employees/{id}/edit', function (Request $request, $id) {
+    require_admin_record();
+    $data = ['name'=>$request->name,'email'=>$request->email,'role'=>$request->role,'branch_id'=>$request->branch_id,'active'=>$request->active,'updated_at'=>now()];
+    if ($request->filled('password')) $data['password'] = Hash::make($request->password);
+    DB::table('users')->where('id',$id)->update($data);
+    return redirect('/employees')->with('success','تم تعديل الموظف.');
+});
+
+Route::post('/employees/{id}/delete', function ($id) {
+    $user = require_admin_record();
+    if ((int)$user->id === (int)$id) return back()->with('error','لا يمكن حذف حسابك الحالي.');
+    DB::table('users')->where('id',$id)->delete();
+    return back()->with('success','تم حذف الموظف.');
+});
+
+Route::get('/branches', function () {
+    $user = require_user_record();
+    $rows = DB::table('branches')->latest()->get();
+    $html = '<div class="mobile-stack flex items-center justify-between mb-6"><h1 class="text-3xl font-black">الفروع</h1></div><div class="card p-5 mb-6"><form method="POST" action="/branches" class="grid md:grid-cols-3 gap-3"><input type="hidden" name="_token" value="'.csrf_token().'"><input class="input" name="name" placeholder="اسم الفرع" required><input class="input" name="code" placeholder="كود الفرع اختياري"><button class="btn btn-primary">إضافة فرع</button></form></div><div class="card table-wrap"><table class="w-full"><tr><th>الفرع</th><th>الكود</th><th>الحالة</th><th>إجراءات</th></tr>';
+    foreach ($rows as $r) $html .= '<tr><td>'.e($r->name).'</td><td>'.e($r->code).'</td><td>'.(($r->active ?? true) ? 'نشط' : 'موقوف').'</td><td><a class="btn btn-soft" href="/branches/'.$r->id.'/edit">تحرير</a><form method="POST" action="/branches/'.$r->id.'/delete" class="inline"><input type="hidden" name="_token" value="'.csrf_token().'"><button class="btn btn-danger" onclick="return confirm(\'حذف الفرع؟\')">حذف</button></form></td></tr>';
+    return app_layout('الفروع', $html.'</table></div>', $user);
+});
+
+Route::get('/branches/{id}/edit', function($id){ $user=require_admin_record(); $b=DB::table('branches')->find($id); abort_unless($b,404); $html='<div class="max-w-xl card p-6"><h1 class="text-3xl font-black mb-6">تحرير الفرع</h1><form method="POST" action="/branches/'.$b->id.'/edit" class="space-y-4"><input type="hidden" name="_token" value="'.csrf_token().'"><input class="input" name="name" value="'.e($b->name).'" required><input class="input" name="code" value="'.e($b->code).'"><select class="input" name="active"><option value="1" '.(($b->active??true)?'selected':'').'>نشط</option><option value="0" '.(!($b->active??true)?'selected':'').'>موقوف</option></select><button class="btn btn-primary">حفظ</button></form></div>'; return app_layout('تحرير فرع',$html,$user); });
+Route::post('/branches/{id}/edit', function(Request $request,$id){ require_admin_record(); DB::table('branches')->where('id',$id)->update(['name'=>$request->name,'code'=>$request->code,'active'=>$request->active,'updated_at'=>now()]); return redirect('/branches')->with('success','تم تعديل الفرع.'); });
+Route::post('/branches/{id}/delete', function($id){ require_admin_record(); DB::table('branches')->where('id',$id)->delete(); return back()->with('success','تم حذف الفرع.'); });
+
+Route::post('/agents/{id}/delete', function($id){ require_user_record(); DB::table('agents')->where('id',$id)->delete(); return back()->with('success','تم حذف المندوب.'); });
+'''
+
+          p.write_text(s)
+          PY
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add routes/web.php
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "add manager CRUD dashboard and responsive upgrades"
+            git push
+          fi

@@ -43,7 +43,31 @@ function require_admin_record()
 function app_layout(string $title, string $body, ?object $user = null): string
 {
     $user = $user ?: current_user_record();
-    $nav = $user ? '<aside class="w-full lg:w-72 bg-slate-950 text-white p-5 lg:min-h-screen">
+    $nav = $user ? '
+    <div class="lg:hidden sticky top-0 z-50 bg-slate-950 text-white border-b border-slate-800">
+        <details class="group">
+            <summary class="flex items-center justify-between p-4 cursor-pointer list-none">
+                <div>
+                    <div class="text-lg font-black">نظام مكافآت المناديب</div>
+                    <div class="text-slate-300 text-xs">اضغط لاختيار القسم</div>
+                </div>
+                <span class="text-2xl group-open:rotate-180 transition">⌄</span>
+            </summary>
+            <nav class="grid grid-cols-2 gap-2 p-4 pt-0 text-sm bg-slate-950">
+                <a class="rounded-xl px-4 py-3 bg-slate-900 hover:bg-slate-800" href="/dashboard">الرئيسية</a>
+                <a class="rounded-xl px-4 py-3 bg-slate-900 hover:bg-slate-800" href="/invoices">الفواتير والنقاط</a>
+                <a class="rounded-xl px-4 py-3 bg-slate-900 hover:bg-slate-800" href="/agents">المناديب</a>
+                <a class="rounded-xl px-4 py-3 bg-slate-900 hover:bg-slate-800" href="/payouts">الصرف والتصفير</a>
+                <a class="rounded-xl px-4 py-3 bg-slate-900 hover:bg-slate-800" href="/branches">الفروع</a>
+                <a class="rounded-xl px-4 py-3 bg-slate-900 hover:bg-slate-800" href="/employees">الموظفون</a>
+                <a class="rounded-xl px-4 py-3 bg-slate-900 hover:bg-slate-800" href="/agent/login">بوابة المندوب</a>
+                <form method="POST" action="/logout"><input type="hidden" name="_token" value="'.csrf_token().'">
+                    <button class="w-full rounded-xl px-4 py-3 bg-red-950 hover:bg-red-900 text-right">خروج</button>
+                </form>
+            </nav>
+        </details>
+    </div>
+    <aside class="hidden lg:block w-72 bg-slate-950 text-white p-5 min-h-screen sticky top-0">
         <div class="mb-8"><div class="text-2xl font-black">نظام مكافآت المناديب</div><div class="text-slate-300 text-sm mt-1">لوحة التحكم الداخلية</div></div>
         <nav class="space-y-2 text-sm">
             <a class="block rounded-xl px-4 py-3 hover:bg-slate-800" href="/dashboard">الرئيسية</a>
@@ -64,7 +88,7 @@ function app_layout(string $title, string $body, ?object $user = null): string
         }
     }
 
-    return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.e($title).'</title><script src="https://cdn.tailwindcss.com"></script><style>body{font-family:Tahoma,Arial,sans-serif}.input{width:100%;border:1px solid #cbd5e1;border-radius:14px;padding:12px;background:white}.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:14px;padding:11px 18px;font-weight:700}.btn-primary{background:#0f172a;color:white}.btn-soft{background:#f1f5f9;color:#0f172a}.card{background:white;border:1px solid #e2e8f0;border-radius:22px;box-shadow:0 8px 20px rgba(15,23,42,.04)}th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:right}</style></head><body class="bg-slate-50 text-slate-900"><div class="lg:flex">'.$nav.'<main class="flex-1 p-4 lg:p-8"><div class="max-w-7xl mx-auto">'.$flash.$body.'</div></main></div></body></html>';
+    return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'.e($title).'</title><script src="https://cdn.tailwindcss.com"></script><style>body{font-family:Tahoma,Arial,sans-serif}.input{width:100%;border:1px solid #cbd5e1;border-radius:14px;padding:12px;background:white;font-size:16px}.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:14px;padding:11px 18px;font-weight:700}.btn-primary{background:#0f172a;color:white}.btn-soft{background:#f1f5f9;color:#0f172a}.card{background:white;border:1px solid #e2e8f0;border-radius:22px;box-shadow:0 8px 20px rgba(15,23,42,.04)}th,td{padding:12px;border-bottom:1px solid #e2e8f0;text-align:right;white-space:nowrap}@media(max-width:768px){main{padding:14px!important}.card{border-radius:18px}h1{font-size:1.55rem!important}.grid{grid-template-columns:1fr!important}table{font-size:13px}.overflow-x-auto{overflow-x:auto;-webkit-overflow-scrolling:touch}.btn{width:100%;margin-top:4px}}</style></head><body class="bg-slate-50 text-slate-900"><div class="min-h-screen lg:flex">'.$nav.'<main class="flex-1 p-4 lg:p-8"><div class="max-w-7xl mx-auto">'.$flash.$body.'</div></main></div></body></html>';
 }
 
 function eligible_net(float $amount, float $discount): float

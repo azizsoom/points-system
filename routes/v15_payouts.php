@@ -25,8 +25,20 @@ function v15_agent_balance(int $agentId): array
     ];
 }
 
+function v15_can_manage_payouts(?object $user = null): bool
+{
+    $user = $user ?: current_user_record();
+
+    return $user && (
+        ($user->role ?? 'staff') === 'admin'
+        || ($user->can_manage_payouts ?? false)
+    );
+}
+
 Route::get('/payouts', function () {
     $user = require_user_record();
+    abort_unless(v15_can_manage_payouts($user), 403);
+
     $agents = DB::table('agents')->orderBy('name')->get();
     $payouts = DB::table('payouts')
         ->join('agents', 'agents.id', '=', 'payouts.agent_id')
@@ -48,7 +60,7 @@ Route::get('/payouts', function () {
     $html .= '<div class="grid xl:grid-cols-2 gap-6 items-start"><section class="card table-wrap"><div class="p-5 border-b border-slate-200"><h2 class="font-black text-xl">أرصدة المناديب المعتمدة</h2></div><table><thead><tr><th>المندوب</th><th>إجمالي المعتمد</th><th>المصروف</th><th>المتاح</th><th>يصرف الآن</th><th>الكسر</th><th>الإجراء</th></tr></thead><tbody>';
     foreach ($agents as $a) {
         $b = v15_agent_balance($a->id);
-        $html .= '<tr><td class="font-bold">'.e($a->name).'</td><td>'.money_fmt($b['earned']).'</td><td>'.money_fmt($b['paid']).'</td><td>'.money_fmt($b['available']).'</td><td><span class="font-bold text-emerald-700">'.money_fmt($b['payable_now']).'</span></td><td>'.money_fmt($b['fraction']).'</td><td><form method="POST" action="/payouts"><input type="hidden" name="_token" value="'.csrf_token().'"><input type="hidden" name="agent_id" value="'.$a->id.'"><button class="btn btn-primary" '.($b['payable_now'] <= 0 ? 'disabled style="opacity:.45;cursor:not-allowed"' : '').'>صرف المتاح</button></form></td></tr>';
+        $html .= '<tr><td class="font-bold">'.e($a->name).'</td><td>'.money_fmt($b['earned']).'</td><td>'.money_fmt($b['paid']).'</td><td>'.money_fmt($b['available']).'</td><td><span class="font-bold text-emerald-700">'.money_fmt($b['payable_now']).'</span></td><td>'.money_fmt($b['fraction']).'</td><td><form method="POST" action="/payouts"><input type="hidden" name="_token" value="'.csrf_token() .'"><input type="hidden" name="agent_id" value="'.$a->id.'"><button class="btn btn-primary" '.($b['payable_now'] <= 0 ? 'disabled style="opacity:.45;cursor:not-allowed"' : '').'>صرف المتاح</button></form></td></tr>';
     }
     $html .= '</tbody></table></section>';
 
@@ -64,6 +76,8 @@ Route::get('/payouts', function () {
 
 Route::post('/payouts', function (Request $request) {
     $user = require_user_record();
+    abort_unless(v15_can_manage_payouts($user), 403);
+
     $agent = DB::table('agents')->find($request->agent_id);
     abort_unless($agent, 404);
 
@@ -92,12 +106,14 @@ Route::post('/payouts', function (Request $request) {
 });
 
 Route::get('/payouts/{id}/receipt', function ($id) {
-    require_user_record();
+    $user = require_user_record();
+    abort_unless(v15_can_manage_payouts($user), 403);
+
     $payout = DB::table('payouts')->where('id', $id)->first();
     abort_unless($payout, 404);
     $agent = DB::table('agents')->find($payout->agent_id);
     $user = $payout->user_id ? DB::table('users')->find($payout->user_id) : null;
-    return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>إيصال صرف</title><style>body{font-family:Tahoma,Arial;background:#f8fafc;padding:30px}.paper{max-width:760px;margin:auto;background:white;border:1px solid #e2e8f0;border-radius:24px;padding:32px}.row{display:flex;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding:14px 0}.title{text-align:center;font-size:28px;font-weight:900;margin-bottom:24px}.stamp{margin-top:35px;border:2px dashed #94a3b8;border-radius:20px;padding:20px;text-align:center}@media print{button{display:none}body{background:white}.paper{border:0}}</style></head><body><div class="paper"><div class="title">إيصال صرف مستحقات مندوب</div><div class="row"><b>رقم الإيصال</b><span>#'.$payout->id.'</span></div><div class="row"><b>اسم المندوب</b><span>'.e($agent->name ?? '-').'</span></div><div class="row"><b>المبلغ المصروف</b><span>'.money_fmt($payout->amount).'</span></div><div class="row"><b>الموظف</b><span>'.e($user->name ?? '-').'</span></div><div class="row"><b>التاريخ</b><span>'.riyadh_dt($payout->created_at).'</span></div><div class="stamp">توقيع المستلم / الختم</div><button onclick="window.print()" style="margin-top:25px;width:100%;padding:14px;border:0;border-radius:14px;background:#0f172a;color:white;font-weight:800">طباعة أو حفظ PDF</button></div></body></html>';
+    return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>إيصال صرف</title><style>body{font-family:Tahoma,Arial;background:#f8fafc;padding:30px}.paper{max-width:760px;margin:auto;background:white;border:1px solid #e2e8f0;border-radius:24px;padding:32px}.row{display:flex;justify-content:space-between;border-bottom:1px solid #e2e8f0;padding:14px 0}.title{text-align:center;font-size:28px;font-weight:900;margin-bottom:24px}.stamp{margin-top:35px;border:2px dashed #94a3b8;border-radius:20px;padding:20px;text-align:center}@media print{button{display:none}body{background:white}.paper{border:0}}</style></head><body><div class="paper"><div class="title">إيصال صرف مستحقات مندوب</div><div class="row"><b>رقم الإيصال</b><span>#'.$payout->id.'</span></div><div class="row"><b>اسم المندوب</b><span>'.e($agent->name ?? '-') .'</span></div><div class="row"><b>المبلغ المصروف</b><span>'.money_fmt($payout->amount).'</span></div><div class="row"><b>الموظف</b><span>'.e($user->name ?? '-') .'</span></div><div class="row"><b>التاريخ</b><span>'.riyadh_dt($payout->created_at).'</span></div><div class="stamp">توقيع المستلم / الختم</div><button onclick="window.print()" style="margin-top:25px;width:100%;padding:14px;border:0;border-radius:14px;background:#0f172a;color:white;font-weight:800">طباعة أو حفظ PDF</button></div></body></html>';
 });
 
 Route::get('/agent/dashboard', function () {

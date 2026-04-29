@@ -74,7 +74,15 @@ function audit_record(Request $request): void
 
         $details = null;
         if ($request->isMethod('POST')) {
-            $safe = collect($request->except(['password', '_token', 'attachment']))
+            $safe = collect($request->except(['attachment']))
+                ->reject(function ($value, $key) {
+                    $key = strtolower((string) $key);
+
+                    return $key === '_token'
+                        || str_contains($key, 'password')
+                        || str_contains($key, 'token')
+                        || str_contains($key, 'secret');
+                })
                 ->map(fn ($v) => is_scalar($v) ? (string) $v : json_encode($v, JSON_UNESCAPED_UNICODE))
                 ->toArray();
             $details = $safe ? json_encode($safe, JSON_UNESCAPED_UNICODE) : null;

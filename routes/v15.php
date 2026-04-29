@@ -52,6 +52,36 @@ function v15_can_approve(?object $user = null): bool
     return $user && (($user->role ?? 'staff') === 'admin' || ($user->can_approve_invoices ?? false));
 }
 
+function v15_can_manage_invoices(?object $user = null): bool
+{
+    $user = $user ?: current_user_record();
+
+    return $user && (
+        ($user->role ?? 'staff') === 'admin'
+        || ($user->can_manage_invoices ?? false)
+        || ($user->can_approve_invoices ?? false)
+    );
+}
+
+function v15_can_cancel_invoice(?object $invoice, ?object $user = null): bool
+{
+    if (!$invoice) {
+        return false;
+    }
+
+    $user = $user ?: current_user_record();
+
+    if (!$user) {
+        return false;
+    }
+
+    if (($invoice->invoice_status ?? null) === 'paid') {
+        return false;
+    }
+
+    return ($user->role ?? 'staff') === 'admin' || ($user->can_approve_invoices ?? false);
+}
+
 function v15_eligible_amount(float $amount, float $discount, float $shipping): float
 {
     return max(0, $amount - $discount - $shipping);
@@ -130,6 +160,8 @@ Route::get('/invoices', function (Request $request) {
 
 Route::post('/invoices', function (Request $request) {
     $user = require_user_record();
+    abort_unless(v15_can_manage_invoices($user), 403);
+
     $agent = DB::table('agents')->where(function ($q) use ($request) {
         $q->where('referral_code', $request->agent_query)->orWhere('phone', $request->agent_query)->orWhere('name', 'like', '%'.$request->agent_query.'%');
     })->first();
@@ -204,8 +236,17 @@ Route::post('/invoices/{id}/reject', function ($id) {
 });
 
 Route::post('/invoices/{id}/cancel', function ($id) {
-    require_user_record();
+    $user = require_user_record();
     $before = DB::table('invoices')->where('id', $id)->first();
+
+    abort_unless($before, 404);
+
+    if (($before->invoice_status ?? null) === 'paid') {
+        return back()->with('error', 'لا يمكن إلغاء فاتورة تم صرفها. يجب مراجعة الإدارة أولاً.');
+    }
+
+    abort_unless(v15_can_cancel_invoice($before, $user), 403);
+
     DB::table('invoices')->where('id', $id)->update(['invoice_status' => 'cancelled', 'status' => 'cancelled', 'cancel_reason' => 'إلغاء من الإدارة', 'updated_at' => now()]);
     $after = DB::table('invoices')->where('id', $id)->first();
     v15_audit_change('إلغاء فاتورة', 'الفواتير والنقاط', $before, $after);
